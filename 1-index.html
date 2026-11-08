@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threads 長期權杖產生器</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #191d24;
+    --border: #2a303a;
+    --text: #e8eaee;
+    --muted: #9aa3b0;
+    --accent: #4f8cff;
+    --accent-hover: #3b76e8;
+    --ok: #3fb97c;
+    --err: #e5604f;
+    --warn-bg: #2a2216;
+    --warn-border: #6b5424;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.65;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 20px 16px 64px; }
+  h1 { font-size: 1.45rem; margin: 8px 0 4px; }
+  h2 { font-size: 1.08rem; margin: 0 0 10px; }
+  .sub { color: var(--muted); font-size: .92rem; margin: 0 0 18px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin: 14px 0;
+  }
+  .privacy {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: .9rem;
+    margin: 14px 0;
+  }
+  label { display: block; font-size: .9rem; color: var(--muted); margin: 12px 0 4px; }
+  input[type=text], input[type=password], textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #10141a;
+    color: var(--text);
+    font-size: 1rem;
+    font-family: inherit;
+  }
+  textarea { min-height: 84px; resize: vertical; word-break: break-all; }
+  input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .check { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; font-size: .88rem; color: var(--muted); }
+  .check input { margin-top: 4px; }
+  button {
+    display: block;
+    width: 100%;
+    margin-top: 14px;
+    padding: 12px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.secondary { background: #262c36; color: var(--text); border: 1px solid var(--border); }
+  button.secondary:hover { background: #303845; }
+  button:disabled { opacity: .5; cursor: default; }
+  .hint { font-size: .84rem; color: var(--muted); margin-top: 8px; }
+  .status { font-size: .92rem; margin-top: 12px; white-space: pre-wrap; word-break: break-all; }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--err); }
+  .token-box {
+    background: #10141a;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .82rem;
+    word-break: break-all;
+    margin-top: 10px;
+    max-height: 140px;
+    overflow-y: auto;
+  }
+  .step-num {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    width: 22px; height: 22px;
+    line-height: 22px;
+    text-align: center;
+    font-size: .8rem;
+    margin-right: 6px;
+    vertical-align: 2px;
+  }
+  code { background: #10141a; padding: 1px 6px; border-radius: 5px; font-size: .85em; }
+  .hidden { display: none; }
+  .footer { color: var(--muted); font-size: .8rem; margin-top: 24px; text-align: center; }
+  .vault-remind {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px dashed var(--accent);
+    border-radius: 10px;
+    font-size: .9rem;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Threads 長期權杖產生器</h1>
+  <p class="sub">用 Threads App 產生 60 天長期存取權杖（long-lived access token）。</p>
+
+  <div class="privacy">
+    <strong>隱私說明：</strong>這是一個純前端工具，沒有後端伺服器。你輸入的資料只會從你的瀏覽器直接送到 Meta 官方伺服器（<code>threads.net</code>、<code>graph.threads.net</code>），不會傳到任何其他地方。App 密鑰預設不會被儲存；除非你主動勾選，否則只有 App ID 和 redirect URI 會存在這台裝置的瀏覽器本機儲存（localStorage）。
+  </div>
+
+  <div class="card">
+    <h2>基本資料</h2>
+    <label for="appId">Threads App ID</label>
+    <input type="text" id="appId" inputmode="numeric" autocomplete="off" placeholder="例如 1234567890123456">
+    <label for="appSecret">Threads App 密鑰（App Secret）</label>
+    <input type="password" id="appSecret" autocomplete="off" placeholder="App 密鑰">
+    <label for="redirectUri">Redirect URI（需與 Threads App 設定相同）</label>
+    <input type="text" id="redirectUri" inputmode="url" autocomplete="off" placeholder="例如 https://example.com/callback">
+    <div class="check">
+      <input type="checkbox" id="rememberBasic">
+      <label for="rememberBasic" style="margin:0">記住 App ID 和 redirect URI（存在此瀏覽器，下次自動填入）</label>
+    </div>
+    <div class="check">
+      <input type="checkbox" id="rememberSecret">
+      <label for="rememberSecret" style="margin:0">也記住 App 密鑰（不建議；存在此瀏覽器裡）</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-num">1</span>開啟 Threads 授權頁面</h2>
+    <p class="hint" style="margin-top:0">會在新分頁打開 Threads 官方授權頁。登入並同意後，瀏覽器會跳轉到你的 redirect URI（頁面可能打不開，這是正常的）。</p>
+    <button id="btnAuthorize">開啟授權頁面</button>
+    <div class="hint">授權網址：<span id="authUrlPreview" style="word-break:break-all">（填入 App ID 和 redirect URI 後顯示）</span></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-num">2</span>貼上跳轉後的網址</h2>
+    <p class="hint" style="margin-top:0">把瀏覽器網址列上跳轉後的完整網址貼在這裡（或只貼 code 也可以）。</p>
+    <textarea id="redirectPaste" placeholder="https://example.com/callback?code=AQB..."></textarea>
+    <div class="hint" id="codePreview"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step-num">3</span>交換長期權杖</h2>
+    <p class="hint" style="margin-top:0">先用 code 換短期權杖，再立即換成 60 天長期權杖。如果失敗，會顯示 Meta 回傳的原始錯誤方便除錯。</p>
+    <button id="btnExchange">取得長期權杖</button>
+    <div class="status" id="exchangeStatus"></div>
+  </div>
+
+  <div class="card hidden" id="resultCard">
+    <h2><span class="step-num">4</span>你的長期權杖</h2>
+    <div class="token-box" id="tokenBox"></div>
+    <button class="secondary" id="btnCopy">複製權杖</button>
+    <div class="status" id="copyStatus"></div>
+    <div class="status" id="expiryStatus"></div>
+    <div class="vault-remind">
+      記得把這串權杖貼到 Instinct 傳給你的保管庫（vault）連結，不要直接貼在聊天訊息裡。
+    </div>
+  </div>
+
+  <div class="footer">純前端工具 · 原始碼只有這一個 HTML 檔 · 資料不經過任何第三方伺服器</div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var LS_ID = "ctt_app_id", LS_URI = "ctt_redirect_uri", LS_SECRET = "ctt_app_secret";
+  var SCOPES = "threads_basic,threads_content_publish,threads_manage_insights";
+
+  // ---- restore saved values ----
+  try {
+    var savedId = localStorage.getItem(LS_ID);
+    var savedUri = localStorage.getItem(LS_URI);
+    var savedSecret = localStorage.getItem(LS_SECRET);
+    if (savedId || savedUri) {
+      if (savedId) $("appId").value = savedId;
+      if (savedUri) $("redirectUri").value = savedUri;
+      $("rememberBasic").checked = true;
+    }
+    if (savedSecret) {
+      $("appSecret").value = savedSecret;
+      $("rememberSecret").checked = true;
+    }
+  } catch (e) { /* localStorage unavailable */ }
+
+  function persist() {
+    try {
+      if ($("rememberBasic").checked) {
+        localStorage.setItem(LS_ID, $("appId").value.trim());
+        localStorage.setItem(LS_URI, $("redirectUri").value.trim());
+      } else {
+        localStorage.removeItem(LS_ID);
+        localStorage.removeItem(LS_URI);
+      }
+      if ($("rememberSecret").checked) {
+        localStorage.setItem(LS_SECRET, $("appSecret").value.trim());
+      } else {
+        localStorage.removeItem(LS_SECRET);
+      }
+    } catch (e) { /* ignore */ }
+  }
+  $("rememberBasic").addEventListener("change", persist);
+  $("rememberSecret").addEventListener("change", persist);
+  ["appId", "redirectUri", "appSecret"].forEach(function (id) {
+    $(id).addEventListener("input", persist);
+  });
+
+  function buildAuthUrl() {
+    var id = $("appId").value.trim();
+    var uri = $("redirectUri").value.trim();
+    if (!id || !uri) return null;
+    return "https://threads.net/oauth/authorize?client_id=" + encodeURIComponent(id) +
+      "&redirect_uri=" + encodeURIComponent(uri) +
+      "&scope=" + SCOPES +
+      "&response_type=code";
+  }
+
+  function refreshPreview() {
+    var url = buildAuthUrl();
+    $("authUrlPreview").textContent = url || "（填入 App ID 和 redirect URI 後顯示）";
+  }
+  $("appId").addEventListener("input", refreshPreview);
+  $("redirectUri").addEventListener("input", refreshPreview);
+  refreshPreview();
+
+  $("btnAuthorize").addEventListener("click", function () {
+    var url = buildAuthUrl();
+    if (!url) {
+      alert("請先填入 App ID 和 redirect URI");
+      return;
+    }
+    window.open(url, "_blank", "noopener");
+  });
+
+  // ---- step 2: extract code ----
+  function extractCode(raw) {
+    if (!raw) return "";
+    var s = raw.trim();
+    // strip trailing #_ that Threads appends
+    if (s.indexOf("http") !== 0) {
+      return s.replace(/#_$/, "").replace(/^code=/, "");
+    }
+    try {
+      var u = new URL(s);
+      var c = u.searchParams.get("code") || "";
+      return c.replace(/#_$/, "");
+    } catch (e) {
+      // not a parseable URL; try regex
+      var m = s.match(/[?&]code=([^&#]+)/);
+      if (m) return decodeURIComponent(m[1]).replace(/#_$/, "");
+      return s.replace(/#_$/, "");
+    }
+  }
+  $("redirectPaste").addEventListener("input", function () {
+    var c = extractCode($("redirectPaste").value);
+    $("codePreview").textContent = c
+      ? "偵測到 code：" + (c.length > 24 ? c.slice(0, 24) + "…（共 " + c.length + " 字元）" : c)
+      : "";
+  });
+
+  // ---- step 3: token exchange (all via POST; Meta returns CORS * on POST) ----
+  function postForm(url, params) {
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(params).toString()
+    }).then(function (resp) {
+      return resp.text().then(function (text) {
+        var json = null;
+        try { json = JSON.parse(text); } catch (e) { /* keep raw */ }
+        return { ok: resp.ok, status: resp.status, json: json, raw: text };
+      });
+    });
+  }
+
+  function setStatus(el, msg, cls) {
+    el.textContent = msg;
+    el.className = "status" + (cls ? " " + cls : "");
+  }
+
+  function formatErr(prefix, r) {
+    if (r.json && r.json.error) {
+      var e = r.json.error;
+      return prefix + "失敗（HTTP " + r.status + "）：\n" +
+        (e.message || "") +
+        (e.type ? "\n類型：" + e.type : "") +
+        (e.code ? "\n代碼：" + e.code : "") +
+        (e.error_subcode ? "\n子代碼：" + e.error_subcode : "") +
+        "\n\n原始回應：\n" + r.raw;
+    }
+    return prefix + "失敗（HTTP " + r.status + "）：\n" + r.raw;
+  }
+
+  $("btnExchange").addEventListener("click", function () {
+    var appId = $("appId").value.trim();
+    var secret = $("appSecret").value.trim();
+    var uri = $("redirectUri").value.trim();
+    var code = extractCode($("redirectPaste").value);
+    var st = $("exchangeStatus");
+    if (!appId || !secret || !uri) { setStatus(st, "請先填寫 App ID、App 密鑰和 redirect URI。", "err"); return; }
+    if (!code) { setStatus(st, "請先在步驟 2 貼上跳轉網址或 code。", "err"); return; }
+
+    $("btnExchange").disabled = true;
+    setStatus(st, "正在用 code 交換短期權杖…");
+
+    postForm("https://graph.threads.net/oauth/access_token", {
+      client_id: appId,
+      client_secret: secret,
+      grant_type: "authorization_code",
+      redirect_uri: uri,
+      code: code
+    }).then(function (r1) {
+      if (!r1.ok || !r1.json || !r1.json.access_token) {
+        setStatus(st, formatErr("交換短期權杖", r1), "err");
+        return;
+      }
+      var shortToken = r1.json.access_token;
+      setStatus(st, "拿到短期權杖，正在交換長期權杖…");
+      return postForm("https://graph.threads.net/access_token", {
+        grant_type: "th_exchange_token",
+        client_secret: secret,
+        access_token: shortToken
+      }).then(function (r2) {
+        if (!r2.ok || !r2.json || !r2.json.access_token) {
+          setStatus(st, formatErr("交換長期權杖", r2), "err");
+          return;
+        }
+        showToken(r2.json.access_token, r2.json.expires_in);
+        setStatus(st, "成功取得長期權杖！", "ok");
+      });
+    }).catch(function (err) {
+      setStatus(st, "網路錯誤（可能是連線問題）：\n" + String(err), "err");
+    }).finally(function () {
+      $("btnExchange").disabled = false;
+    });
+  });
+
+  // ---- step 4: display + expiry ----
+  function showToken(token, expiresIn) {
+    $("resultCard").classList.remove("hidden");
+    $("tokenBox").textContent = token;
+    setStatus($("expiryStatus"), "正在查詢權杖到期時間…");
+    $("resultCard").scrollIntoView({ behavior: "smooth", block: "start" });
+
+    postForm("https://graph.threads.net/debug_token", {
+      input_token: token,
+      access_token: token
+    }).then(function (r) {
+      var d = r.json && r.json.data;
+      if (r.ok && d) {
+        var msg = "";
+        if (d.expires_at) {
+          var dt = new Date(d.expires_at * 1000);
+          msg = "權杖到期時間：" + dt.toLocaleString("zh-TW", { hour12: false }) +
+            "（約 " + Math.max(0, Math.round((d.expires_at * 1000 - Date.now()) / 86400000)) + " 天後）";
+        } else {
+          msg = "此權杖沒有到期時間（expires_at = 0）。";
+        }
+        if (d.is_valid === false) msg += "\n注意：Meta 回報此權杖無效。";
+        if (d.scopes && d.scopes.length) msg += "\n授權範圍：" + d.scopes.join(", ");
+        setStatus($("expiryStatus"), msg, d.is_valid === false ? "err" : "ok");
+      } else if (expiresIn) {
+        var dt2 = new Date(Date.now() + expiresIn * 1000);
+        setStatus($("expiryStatus"),
+          "（debug_token 查詢失敗，改用交換回應推算）\n權杖約於 " +
+          dt2.toLocaleString("zh-TW", { hour12: false }) + " 到期（約 " +
+          Math.round(expiresIn / 86400) + " 天後）。\n原始錯誤：\n" + r.raw, "");
+      } else {
+        setStatus($("expiryStatus"), "查詢到期時間失敗：\n" + r.raw, "err");
+      }
+    }).catch(function (err) {
+      if (expiresIn) {
+        var dt3 = new Date(Date.now() + expiresIn * 1000);
+        setStatus($("expiryStatus"),
+          "（debug_token 連線失敗，改用交換回應推算）\n權杖約於 " +
+          dt3.toLocaleString("zh-TW", { hour12: false }) + " 到期（約 " +
+          Math.round(expiresIn / 86400) + " 天後）。", "");
+      } else {
+        setStatus($("expiryStatus"), "查詢到期時間時發生網路錯誤：" + String(err), "err");
+      }
+    });
+  }
+
+  $("btnCopy").addEventListener("click", function () {
+    var t = $("tokenBox").textContent;
+    function done() { setStatus($("copyStatus"), "已複製到剪貼簿。", "ok"); }
+    function fallback() {
+      var ta = document.createElement("textarea");
+      ta.value = t;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); done(); }
+      catch (e) { setStatus($("copyStatus"), "複製失敗，請手動選取權杖文字複製。", "err"); }
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(done, fallback);
+    } else {
+      fallback();
+    }
+  });
+})();
+</script>
+</body>
+</html>
